@@ -30,19 +30,12 @@ jobs:
           path: app_mojo/libs
 
       
-      - name: Get Mesa
-        uses: dawidd6/action-download-artifact@v6
-        continue-on-error: true
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          repo: MojoLauncher/mesa-unified2
-          workflow: android.yml
-          workflow_conclusion: success
-          branch: mojo/26.2
-          name: mesa-aar
-          path: app_mojo/libs
-          if_no_artifact_found: warn
-          
+      
+      - name: Check Mesa files
+        run: |
+          echo "Checking Mesa dependency files"
+          ls -lah app_mojo/libs
+   
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.14.5"
