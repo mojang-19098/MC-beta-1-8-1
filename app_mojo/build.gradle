@@ -1,3 +1,4 @@
+
 plugins {
     id 'com.android.application' version '8.11.1'
     id 'de.undercouch.download' version '5.6.0'
@@ -78,7 +79,7 @@ android {
     }
 
     defaultConfig {
-        applicationId "git.artdeell.mjlaunch"
+        applicationId "git.artdeell.mjbeta181"
         minSdkVersion 21
         targetSdkVersion 36
         versionCode getDateSeconds()
@@ -88,13 +89,13 @@ android {
         resValue 'string', 'group_id', 'git.artdeell'
     }
 
-    flavorDimensions  = ["runtime"]
-    
+    flavorDimensions = ["runtime"]
+
     productFlavors {
         full {
             dimension "runtime"
         }
-        
+
         noruntime {
             dimension "runtime"
             versionNameSuffix "-noruntime"
@@ -108,8 +109,8 @@ android {
             shrinkResources false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             signingConfig signingConfigs.customDebug
-            resValue 'string', 'application_package', 'git.artdeell.mjlaunch.debug'
-            resValue 'string', 'storageProviderAuthorities', 'git.artdeell.mjlaunch.scoped.gamefolder.debug'
+            resValue 'string', 'application_package', 'git.artdeell.mjbeta181.debug'
+            resValue 'string', 'storageProviderAuthorities', 'git.artdeell.mjbeta181.scoped.gamefolder.debug'
         }
         proguard {
             initWith debug
@@ -129,8 +130,8 @@ android {
             // defaultConfig already set
             // multiDexEnabled = true
             // debuggable = true
-            resValue 'string', 'storageProviderAuthorities', 'git.artdeell.mjlaunch.scoped.gamefolder'
-            resValue 'string', 'application_package', 'git.artdeell.mjlaunch'
+            resValue 'string', 'storageProviderAuthorities', 'git.artdeell.mjbeta181.scoped.gamefolder'
+            resValue 'string', 'application_package', 'git.artdeell.mjbeta181'
         }
         gplay {
             initWith release
@@ -237,7 +238,7 @@ class AssetTaskRegistrar {
     }
 
     def onlineZipDependency(String downloadUrl, String name, String relativePath) {
-	    mergeAssetsTask.dependsOn(onlineUnzipTask downloadUrl, name, assetDestination(relativePath))
+        mergeAssetsTask.dependsOn(onlineUnzipTask downloadUrl, name, assetDestination(relativePath))
     }
 
     def projectJarDependency(Project targetProject, String relativePath) {
@@ -266,7 +267,7 @@ class AssetTaskRegistrar {
         }
     }
 
-    def onlineJarDependency(String jarUrl, String jarProject, String dependency, String version, String suffix,  String relativePath) {
+    def onlineJarDependency(String jarUrl, String jarProject, String dependency, String version, String suffix, String relativePath) {
         File targetDir = assetDestination(relativePath)
         createDirectories targetDir
         def dependencySuffix = "${jarProject}${dependency}${variantName}"
@@ -297,11 +298,11 @@ afterEvaluate {
         registrar.projectJarDependency project(":forge_installer"), "components/forge_installer"
         registrar.projectJarDependency project(":NoBlocklist"), "components/noblocklist"
 
-		if (variant.getName().toLowerCase().contains("full")) {
+        if (variant.getName().toLowerCase().contains("full")) {
             registrar.jreRuntimeDependency 8, "components/jre"
         }
-        
-		def cacioJarUrl = "https://jitpack.io/com/github/MojoLauncher/%1\$s/%2\$s/%3\$s/%2\$s-%3\$s%4\$s.jar"
+
+        def cacioJarUrl = "https://jitpack.io/com/github/MojoLauncher/%1\$s/%2\$s/%3\$s/%2\$s-%3\$s%4\$s.jar"
 
         registrar.onlineJarDependency cacioJarUrl, "caciocavallo", "cacio-shared", "d0efb5aaba", "", "components/caciocavallo"
         registrar.onlineJarDependency cacioJarUrl, "caciocavallo", "cacio-androidnw", "d0efb5aaba", "", "components/caciocavallo"
@@ -341,6 +342,7 @@ dependencies {
 
     implementation project(":glfw:jni_bindings")
     implementation project(":sdl:jni_bindings")
+
     // implementation 'net.sourceforge.streamsupport:streamsupport-cfuture:1.7.0'
 
     implementation fileTree(dir: 'libs', include: ['*.jar', '*.aar'])
