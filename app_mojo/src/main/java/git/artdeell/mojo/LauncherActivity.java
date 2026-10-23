@@ -1,6 +1,8 @@
+
 package git.artdeell.mojo;
 
 import static android.content.res.Configuration.ORIENTATION_PORTRAIT;
+
 import android.Manifest;
 import android.app.NotificationManager;
 import android.content.Context;
@@ -24,6 +26,8 @@ import androidx.fragment.app.FragmentContainerView;
 import androidx.fragment.app.FragmentManager;
 
 import com.kdt.mcgui.ProgressLayout;
+
+import java.io.IOException;
 
 import git.artdeell.mojo.authenticator.accounts.Accounts;
 import git.artdeell.mojo.extra.ExtraConstants;
@@ -51,6 +55,11 @@ import git.artdeell.mojo.utils.NotificationUtils;
 public class LauncherActivity extends BaseActivity {
     public static final String SETTING_FRAGMENT_TAG = "SETTINGS_FRAGMENT";
 
+    // Minecraft Beta 1.8.1 version ID expected in the version list.
+    private static final String AUTO_LAUNCH_VERSION_ID = "b1.8.1";
+
+    private boolean mAutoLaunchTriggered = false;
+
     private FragmentContainerView mFragmentView;
     private ImageButton mSettingsButton;
     private ProgressLayout mProgressLayout;
@@ -58,93 +67,117 @@ public class LauncherActivity extends BaseActivity {
     private NotificationManager mNotificationManager;
     private static ActivityResultLauncher<String> mRequestPermissionLauncher;
 
-    /* Allows to switch from one button "type" to another */
-    private final FragmentManager.FragmentLifecycleCallbacks mFragmentCallbackListener = new FragmentManager.FragmentLifecycleCallbacks() {
+    private final FragmentManager.FragmentLifecycleCallbacks mFragmentCallbackListener =
+            new FragmentManager.FragmentLifecycleCallbacks() {
         @Override
         public void onFragmentResumed(@NonNull FragmentManager fm, @NonNull Fragment f) {
-            mSettingsButton.setImageDrawable(ContextCompat.getDrawable(getBaseContext(), f instanceof MainMenuFragment
-                    ? R.drawable.ic_px_sliders : R.drawable.ic_px_home));
+            mSettingsButton.setImageDrawable(ContextCompat.getDrawable(
+                    getBaseContext(),
+                    f instanceof MainMenuFragment
+                            ? R.drawable.ic_px_sliders
+                            : R.drawable.ic_px_home
+            ));
         }
     };
 
-    /* Listener for the back button in settings */
     private final ExtraListener<String> mBackPreferenceListener = (key, value) -> {
-        if(value.equals("true")) onBackPressed();
+        if (value.equals("true")) onBackPressed();
         return false;
     };
 
-    /* Listener for the auth method selection screen */
     private final ExtraListener<Boolean> mSelectAuthMethod = (key, value) -> {
-        // The "false" value is used to stop auth method selection
         FragmentManager manager = getSupportFragmentManager();
-        if(!value || manager.isStateSaved()) return false;
-        Fragment fragment = manager.findFragmentById(mFragmentView.getId());
-        // Allow starting the add account only from the main menu, should it be moved to fragment itself ?
-        if(!(fragment instanceof MainMenuFragment)) return false;
+        if (!value || manager.isStateSaved()) return false;
 
-        Tools.swapFragment(this, SelectAuthFragment.class, SelectAuthFragment.TAG, null);
+        Fragment fragment = manager.findFragmentById(mFragmentView.getId());
+        if (!(fragment instanceof MainMenuFragment)) return false;
+
+        Tools.swapFragment(
+                this,
+                SelectAuthFragment.class,
+                SelectAuthFragment.TAG,
+                null
+        );
         return false;
     };
 
-    /* Listener for the settings fragment */
     private final View.OnClickListener mSettingButtonListener = v -> {
         FragmentManager manager = getSupportFragmentManager();
-        if(manager.isStateSaved()) return;
+        if (manager.isStateSaved()) return;
+
         Fragment fragment = manager.findFragmentById(mFragmentView.getId());
-        if(fragment instanceof MainMenuFragment){
-            Tools.swapFragment(this, LauncherPreferenceFragment.class, SETTING_FRAGMENT_TAG, null);
-        } else{
-            // The setting button doubles as a home button now
+
+        if (fragment instanceof MainMenuFragment) {
+            Tools.swapFragment(
+                    this,
+                    LauncherPreferenceFragment.class,
+                    SETTING_FRAGMENT_TAG,
+                    null
+            );
+        } else {
             Tools.backToMainMenu(this);
         }
     };
 
     private final ExtraListener<Boolean> mLaunchGameListener = (key, value) -> {
-        if(!ProgressLayout.ensureNoOngoingTasks(this)) return false;
+        if (!ProgressLayout.ensureNoOngoingTasks(this)) return false;
 
         Instance selectedInstance = Instances.loadSelectedInstance();
 
-        if(selectedInstance == null) {
+        if (selectedInstance == null) {
             Toast.makeText(this, R.string.no_instance, Toast.LENGTH_LONG).show();
             return false;
         }
 
-        if(selectedInstance.installer != null) {
+        if (selectedInstance.installer != null) {
             selectedInstance.installer.start();
             return false;
         }
 
-        if (!Tools.isValidString(selectedInstance.versionId)){
+        if (!Tools.isValidString(selectedInstance.versionId)) {
             Toast.makeText(this, R.string.error_no_version, Toast.LENGTH_LONG).show();
             return false;
         }
 
-        if(Accounts.getCurrent() == null){
+        if (Accounts.getCurrent() == null) {
             Toast.makeText(this, R.string.no_saved_accounts, Toast.LENGTH_LONG).show();
             ExtraCore.setValue(ExtraConstants.SELECT_AUTH_METHOD, true);
             return false;
         }
-        String normalizedVersionId = MoJsonExtras.normalizeVersionId(selectedInstance.versionId);
-        JVersionList.Version mcVersion = MoJsonExtras.getListedVersion(normalizedVersionId);
+
+        String normalizedVersionId =
+                MoJsonExtras.normalizeVersionId(selectedInstance.versionId);
+
+        JVersionList.Version mcVersion =
+                MoJsonExtras.getListedVersion(normalizedVersionId);
+
+        // Prevent a crash if the version ID is missing from the loaded list.
+        if (mcVersion == null) {
+            Toast.makeText(this, R.string.error_no_version, Toast.LENGTH_LONG).show();
+            return false;
+        }
+
         new MoJsonDownloader().start(
-                this.getAssets(),
+                getAssets(),
                 mcVersion,
                 normalizedVersionId,
                 new ContextAwareDoneListener(this, normalizedVersionId)
         );
+
         return false;
     };
 
     private final TaskCountListener mDoubleLaunchPreventionListener = taskCount -> {
-        // Hide the notification that starts the game if there are tasks executing.
-        // Prevents the user from trying to launch the game with tasks ongoing.
-        if(taskCount > 0) {
+        if (taskCount > 0) {
             Tools.runOnUiThread(() ->
-                    mNotificationManager.cancel(NotificationUtils.NOTIFICATION_ID_GAME_START)
+                    mNotificationManager.cancel(
+                            NotificationUtils.NOTIFICATION_ID_GAME_START
+                    )
             );
         }
         return false;
     };
+
     @Override
     protected boolean shouldIgnoreNotch() {
         return getResources().getConfiguration().orientation == ORIENTATION_PORTRAIT;
@@ -163,8 +196,7 @@ public class LauncherActivity extends BaseActivity {
 
         try {
             Os.setenv("TMPDIR", Tools.DIR_CACHE.getAbsolutePath(), true);
-         }
-        catch (Exception e) {
+        } catch (Exception e) {
             throw new RuntimeException(e);
         }
 
@@ -172,36 +204,127 @@ public class LauncherActivity extends BaseActivity {
 
         getWindow().setBackgroundDrawable(null);
         bindViews();
-        mRequestPermissionLauncher = this.registerForActivityResult(
+
+        mRequestPermissionLauncher = registerForActivityResult(
                 new ActivityResultContracts.RequestPermission(),
                 isAllowed -> {
-                    if(!isAllowed) Tools.runOnUiThread(() -> Toast.makeText(this, R.string.notification_permission_toast, Toast.LENGTH_LONG).show());
+                    if (!isAllowed) {
+                        Tools.runOnUiThread(() ->
+                                Toast.makeText(
+                                        this,
+                                        R.string.notification_permission_toast,
+                                        Toast.LENGTH_LONG
+                                ).show()
+                        );
+                    }
                 }
         );
-        checkNotificationPermission();
-        if(LauncherPreferences.PREF_MIGRATION_NOTICE)
-            MojoApplication.sExecutorService.submit(this::checkPreviousInstalls);
 
-        mNotificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        checkNotificationPermission();
+
+        if (LauncherPreferences.PREF_MIGRATION_NOTICE) {
+            MojoApplication.sExecutorService.submit(this::checkPreviousInstalls);
+        }
+
+        mNotificationManager =
+                (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+
         ProgressKeeper.addTaskCountListener(mDoubleLaunchPreventionListener);
-        ProgressKeeper.addTaskCountListener((mProgressServiceKeeper = new ProgressServiceKeeper(this)));
+        ProgressKeeper.addTaskCountListener(
+                (mProgressServiceKeeper = new ProgressServiceKeeper(this))
+        );
 
         mSettingsButton.setOnClickListener(mSettingButtonListener);
         ProgressKeeper.addTaskCountListener(mProgressLayout);
-        ExtraCore.addExtraListener(ExtraConstants.BACK_PREFERENCE, mBackPreferenceListener);
-        ExtraCore.addExtraListener(ExtraConstants.SELECT_AUTH_METHOD, mSelectAuthMethod);
 
-        ExtraCore.addExtraListener(ExtraConstants.LAUNCH_GAME, mLaunchGameListener);
+        ExtraCore.addExtraListener(
+                ExtraConstants.BACK_PREFERENCE,
+                mBackPreferenceListener
+        );
+        ExtraCore.addExtraListener(
+                ExtraConstants.SELECT_AUTH_METHOD,
+                mSelectAuthMethod
+        );
+        ExtraCore.addExtraListener(
+                ExtraConstants.LAUNCH_GAME,
+                mLaunchGameListener
+        );
 
-        new AsyncVersionList().getVersionList(versions -> ExtraCore.setValue(ExtraConstants.RELEASE_TABLE, versions));
+        // Wait for the version list before attempting automatic launch.
+        new AsyncVersionList().getVersionList(versions -> {
+            if (versions == null || versions.versions == null) {
+                return;
+            }
+
+            ExtraCore.setValue(ExtraConstants.RELEASE_TABLE, versions);
+
+            runOnUiThread(() -> tryAutoLaunchBeta(versions));
+        });
 
         mProgressLayout.observe(ProgressLayout.DOWNLOAD_GAME);
         mProgressLayout.observe(ProgressLayout.UNPACK_RUNTIME);
         mProgressLayout.observe(ProgressLayout.INSTALL_MODPACK);
-        mProgressLayout.observe(ProgressLayout.AUTHENTICATE);
         mProgressLayout.observe(ProgressLayout.DOWNLOAD_VERSION_LIST);
         mProgressLayout.observe(ProgressLayout.INSTANCE_INSTALL);
         mProgressLayout.observe(ProgressLayout.DATA_MIGRATION);
+    }
+
+    private void tryAutoLaunchBeta(JVersionList versions) {
+        if (mAutoLaunchTriggered || isFinishing() || isDestroyed()) return;
+
+        // Verify that this version actually exists in the downloaded list.
+        boolean versionExists = false;
+
+        for (JVersionList.Version version : versions.versions) {
+            if (version != null && AUTO_LAUNCH_VERSION_ID.equals(version.id)) {
+                versionExists = true;
+                break;
+            }
+        }
+
+        if (!versionExists) {
+            Toast.makeText(
+                    this,
+                    "Beta 1.8.1 was not found in the version list.",
+                    Toast.LENGTH_LONG
+            ).show();
+            return;
+        }
+
+        Instance selectedInstance = Instances.loadSelectedInstance();
+
+        if (selectedInstance == null) {
+            Toast.makeText(this, R.string.no_instance, Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        // Do not automatically launch an instance that is still installing.
+        if (selectedInstance.installer != null) return;
+
+        // Keep the current instance and its settings; change only its version ID.
+        if (!AUTO_LAUNCH_VERSION_ID.equals(selectedInstance.versionId)) {
+            selectedInstance.versionId = AUTO_LAUNCH_VERSION_ID;
+
+            try {
+                selectedInstance.write();
+            } catch (IOException e) {
+                Toast.makeText(
+                        this,
+                        "Could not save the Beta 1.8.1 version setting.",
+                        Toast.LENGTH_LONG
+                ).show();
+                return;
+            }
+        }
+
+        // Avoid opening the login flow automatically if no account is available.
+        if (Accounts.getCurrent() == null) {
+            Toast.makeText(this, R.string.no_saved_accounts, Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        mAutoLaunchTriggered = true;
+        ExtraCore.setValue(ExtraConstants.LAUNCH_GAME, true);
     }
 
     @Override
@@ -220,87 +343,124 @@ public class LauncherActivity extends BaseActivity {
     @Override
     protected void onStart() {
         super.onStart();
-        getSupportFragmentManager().registerFragmentLifecycleCallbacks(mFragmentCallbackListener, true);
+        getSupportFragmentManager().registerFragmentLifecycleCallbacks(
+                mFragmentCallbackListener,
+                true
+        );
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
+
         mProgressLayout.cleanUpObservers();
         ProgressKeeper.removeTaskCountListener(mProgressLayout);
         ProgressKeeper.removeTaskCountListener(mProgressServiceKeeper);
-        ExtraCore.removeExtraListenerFromValue(ExtraConstants.BACK_PREFERENCE, mBackPreferenceListener);
-        ExtraCore.removeExtraListenerFromValue(ExtraConstants.SELECT_AUTH_METHOD, mSelectAuthMethod);
-        ExtraCore.removeExtraListenerFromValue(ExtraConstants.LAUNCH_GAME, mLaunchGameListener);
 
-        getSupportFragmentManager().unregisterFragmentLifecycleCallbacks(mFragmentCallbackListener);
+        ExtraCore.removeExtraListenerFromValue(
+                ExtraConstants.BACK_PREFERENCE,
+                mBackPreferenceListener
+        );
+        ExtraCore.removeExtraListenerFromValue(
+                ExtraConstants.SELECT_AUTH_METHOD,
+                mSelectAuthMethod
+        );
+        ExtraCore.removeExtraListenerFromValue(
+                ExtraConstants.LAUNCH_GAME,
+                mLaunchGameListener
+        );
+
+        getSupportFragmentManager().unregisterFragmentLifecycleCallbacks(
+                mFragmentCallbackListener
+        );
     }
 
-    /** Custom implementation to feel more natural when a backstack isn't present */
     @Override
     public void onBackPressed() {
-        MicrosoftLoginFragment fragment = (MicrosoftLoginFragment) getVisibleFragment(MicrosoftLoginFragment.TAG);
-        if(fragment != null){
-            if(fragment.canGoBack()){
-                fragment.goBack();
-                return;
-            }
+        MicrosoftLoginFragment fragment =
+                (MicrosoftLoginFragment) getVisibleFragment(MicrosoftLoginFragment.TAG);
+
+        if (fragment != null && fragment.canGoBack()) {
+            fragment.goBack();
+            return;
         }
 
         super.onBackPressed();
     }
 
     @SuppressWarnings("SameParameterValue")
-    private Fragment getVisibleFragment(String tag){
+    private Fragment getVisibleFragment(String tag) {
         Fragment fragment = getSupportFragmentManager().findFragmentByTag(tag);
-        if(fragment != null && fragment.isVisible()) {
+
+        if (fragment != null && fragment.isVisible()) {
             return fragment;
         }
+
         return null;
     }
 
     @SuppressWarnings("unused")
-    private Fragment getVisibleFragment(int id){
+    private Fragment getVisibleFragment(int id) {
         Fragment fragment = getSupportFragmentManager().findFragmentById(id);
-        if(fragment != null && fragment.isVisible()) {
+
+        if (fragment != null && fragment.isVisible()) {
             return fragment;
         }
+
         return null;
     }
 
     public void askForPermission(int minApi, final String permission) {
-        if(Build.VERSION.SDK_INT < minApi) return;
+        if (Build.VERSION.SDK_INT < minApi) return;
         mRequestPermissionLauncher.launch(permission);
     }
+
     public boolean checkForPermission(int minApi, final String permission) {
-        return Build.VERSION.SDK_INT < minApi ||
-                ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_DENIED;
+        return Build.VERSION.SDK_INT < minApi
+                || ContextCompat.checkSelfPermission(this, permission)
+                != PackageManager.PERMISSION_DENIED;
     }
+
     public boolean checkForPermissionRationale(int minApi, final String permission) {
-        return checkForPermission(minApi, permission) || ActivityCompat.shouldShowRequestPermissionRationale(this, permission);
+        return checkForPermission(minApi, permission)
+                || ActivityCompat.shouldShowRequestPermissionRationale(this, permission);
     }
 
     private void checkNotificationPermission() {
-        if(LauncherPreferences.PREF_SKIP_NOTIFICATION_PERMISSION_CHECK ||
-            this.checkForPermission(33, Manifest.permission.POST_NOTIFICATIONS)) {
+        if (LauncherPreferences.PREF_SKIP_NOTIFICATION_PERMISSION_CHECK
+                || checkForPermission(33, Manifest.permission.POST_NOTIFICATIONS)) {
             return;
         }
+
         showNotificationPermissionReasoning();
     }
 
-    // Call async
-    private void checkPreviousInstalls(){
-        final String[] packages = {"git.artdeell.mojo", "git.artdeell.mojo.debug", "git.artdeell.mojo.pub"};
-        for(String s : packages){
+    private void checkPreviousInstalls() {
+        final String[] packages = {
+                "git.artdeell.mojo",
+                "git.artdeell.mojo.debug",
+                "git.artdeell.mojo.pub"
+        };
+
+        for (String s : packages) {
             Intent i = getPackageManager().getLaunchIntentForPackage(s);
-            if(i == null) continue;
+            if (i == null) continue;
+
             Tools.runOnUiThread(() ->
                     new AlertDialog.Builder(this)
-                        .setTitle(R.string.migration_progress_warning_title)
-                        .setMessage(R.string.migration_notice)
-                        .setPositiveButton(android.R.string.ok, (d, button) -> LauncherPreferences.DEFAULT_PREF.edit().putBoolean("migrationNotice", false).apply())
-                        .setOnDismissListener(d -> LauncherPreferences.PREF_MIGRATION_NOTICE = false)
-                        .show());
+                            .setTitle(R.string.migration_progress_warning_title)
+                            .setMessage(R.string.migration_notice)
+                            .setPositiveButton(
+                                    android.R.string.ok,
+                                    (d, button) -> LauncherPreferences.DEFAULT_PREF.edit()
+                                            .putBoolean("migrationNotice", false)
+                                            .apply()
+                            )
+                            .setOnDismissListener(
+                                    d -> LauncherPreferences.PREF_MIGRATION_NOTICE = false
+                            )
+                            .show()
+            );
             break;
         }
     }
@@ -309,21 +469,32 @@ public class LauncherActivity extends BaseActivity {
         new AlertDialog.Builder(this)
                 .setTitle(R.string.notification_permission_dialog_title)
                 .setMessage(R.string.notification_permission_dialog_text)
-                .setPositiveButton(android.R.string.ok, (d, w) ->
-                        askForPermission(33, Manifest.permission.POST_NOTIFICATIONS))
-                .setNegativeButton(android.R.string.cancel, (d, w)-> handleNoNotificationPermission())
+                .setPositiveButton(
+                        android.R.string.ok,
+                        (d, w) -> askForPermission(
+                                33,
+                                Manifest.permission.POST_NOTIFICATIONS
+                        )
+                )
+                .setNegativeButton(
+                        android.R.string.cancel,
+                        (d, w) -> handleNoNotificationPermission()
+                )
                 .show();
     }
 
     private void handleNoNotificationPermission() {
         LauncherPreferences.PREF_SKIP_NOTIFICATION_PERMISSION_CHECK = true;
+
         LauncherPreferences.DEFAULT_PREF.edit()
-                .putBoolean(LauncherPreferences.PREF_KEY_SKIP_NOTIFICATION_CHECK, true)
+                .putBoolean(
+                        LauncherPreferences.PREF_KEY_SKIP_NOTIFICATION_CHECK,
+                        true
+                )
                 .apply();
     }
 
-    /** Stuff all the view boilerplate here */
-    private void bindViews(){
+    private void bindViews() {
         mFragmentView = findViewById(R.id.container_fragment);
         mSettingsButton = findViewById(R.id.setting_button);
         mProgressLayout = findViewById(R.id.progress_layout);
